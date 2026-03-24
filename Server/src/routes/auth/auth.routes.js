@@ -20,7 +20,8 @@ import {
     resetPasswordController,
     verifyEmailController
  } from "../../controllers/auth/auth.controller.js";
-import { protect } from "../../middlewares/project.middleware.js";
+ 
+import { protect } from "../../middlewares/auth.middleware.js";
 
 const authRouter = express.Router();
 
@@ -86,18 +87,19 @@ authRouter.post(
 );
 
 /**
- * GET /api/auth/logout
+ * POST /api/auth/logout
  */
-authRouter.get(
+authRouter.post(
     "/logout", 
     logoutController
 );
 
 /**
- * GET /api/auth/logout-all
+ * POST /api/auth/logout-all
  */
-authRouter.get(
+authRouter.post(
     "/logout-all",
+    protect,
     logoutAllController
 )
 export default authRouter;
