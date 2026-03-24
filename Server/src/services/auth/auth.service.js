@@ -151,3 +151,99 @@ const sendVerification = async (user, token) => {
     `<a href="${verifyURL}">Verify Account</a>`
   );
 };
+
+export const forgotPasswordService = async (email) => {
+  const user = await userModel.findOne({ email });
+
+  // Prevent email enumeration
+  if (!user) return;
+
+  // Generate raw token
+  const resetToken = crypto.randomBytes(32).toString("hex");
+
+  // Hash before saving
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+
+  // Save in DB with expiry
+  user.resetPasswordToken = hashedToken;
+  user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+
+  await user.save({ validateBeforeSave: false });
+
+  console.log("Reset Token (for testing):", resetToken);
+
+  const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+  try {
+    await sendEmail(
+      user.email,
+      "Reset Password",
+      `
+    <div style="font-family: Arial, sans-serif; padding: 20px;">
+    <h2>Password Reset Request</h2>
+    <p>You requested to reset your password.</p>
+    <p>This link will expire in 15 minutes.</p>
+    <a href="${resetUrl}" 
+       style="display:inline-block;padding:10px 15px;
+              background:#2563eb;color:white;
+              text-decoration:none;border-radius:5px;">
+       Reset Password
+    </a>
+    <p>If you did not request this, please ignore this email.</p>
+  </div>
+`,
+    );
+  } catch (err) {
+    // Remove token if email fails
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    throw new AppError("Email could not be sent", 500);
+  }
+
+  // Return the raw token if you need it
+  return resetToken;
+};
+
+export const resetPasswordService = async (
+  token,
+  password,
+  confirmPassword,
+) => {
+  if (password !== confirmPassword)
+    throw new AppError("Passwords do not match", 400);
+
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = await userModel.findOne({
+    resetPasswordToken: hashedToken,
+    resetPasswordExpire: { $gt: Date.now() },
+  });
+
+  if (!user) throw new AppError("Token invalid or expired", 400);
+
+  // Update password
+  user.password = await hashPassword(password);
+
+  // Reset login attempts & lock
+  user.loginAttempts = 0;
+  user.lockUntil = undefined;
+
+  //  Clear reset token
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+
+  // Increment tokenVersion → old tokens immediately invalid
+  user.tokenVersion += 1;
+
+  // Optional: remove refreshToken to prevent reuse
+  user.refreshToken = undefined;
+
+  await user.save();
+
+  return user;
+};

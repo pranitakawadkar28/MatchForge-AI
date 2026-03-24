@@ -3,13 +3,17 @@ import express from "express";
 import { validate } from "../../middlewares/validate.middleware.js";
 
 import { 
+    forgotPasswordSchema,
     loginSchema,
-    registerSchema, 
+    registerSchema,
+    resetPasswordSchema, 
 } from "../../validators/auth.validator.js";
 
 import { 
+    forgotPasswordController,
     loginController,
     registerController,
+    resetPasswordController,
     verifyEmailController
  } from "../../controllers/auth/auth.controller.js";
 
@@ -39,6 +43,24 @@ authRouter.post(
 authRouter.get(
     "/verify-email/:token", 
     verifyEmailController
+);
+
+/**
+ * POST /api/auth/forgot-password
+ */
+authRouter.post(
+    "/forgot-password", 
+    validate(forgotPasswordSchema), 
+    forgotPasswordController
+);
+
+/**
+ * POST /api/auth/reset-password
+ */
+authRouter.post(
+    "/reset-password/:token", 
+    validate(resetPasswordSchema), 
+    resetPasswordController
 );
 
 export default authRouter;

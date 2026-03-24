@@ -33,6 +33,10 @@ const userSchema = new mongoose.Schema({
   emailVerificationToken: String,
 
   emailVerificationExpires: Date,
+
+  resetPasswordToken: String,
+
+  resetPasswordExpire: Date,
 });
 
 userSchema.set("toJSON", {

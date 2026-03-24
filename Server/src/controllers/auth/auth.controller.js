@@ -1,8 +1,10 @@
 import { NODE_ENV } from "../../config/env.js";
 
 import { 
+  forgotPasswordService,
   loginService,
   registerService, 
+  resetPasswordService, 
   verifyEmailService
 } from "../../services/auth/auth.service.js";
 
@@ -77,6 +79,33 @@ export const verifyEmailController = async (req, res, next) => {
       data: { user },
     });
 
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const forgotPasswordController = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    await forgotPasswordService(email);
+
+    res.status(200).json({ 
+      message: "CHECK YOUR EMAIL FOR RESET LINK" 
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const resetPasswordController = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+    const { password, confirmPassword } = req.body;
+
+    await resetPasswordService(token, password, confirmPassword);
+
+    res.status(200).json({ message: "PASSWORD RESET SUCCESSFULLY" });
   } catch (err) {
     next(err);
   }
