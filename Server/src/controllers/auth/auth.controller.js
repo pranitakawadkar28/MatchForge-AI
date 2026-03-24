@@ -11,6 +11,7 @@ import {
   resetPasswordService, 
   verifyEmailService
 } from "../../services/auth/auth.service.js";
+import { AppError } from "../../utils/AppError.js";
 
 export const registerController = async (req, res, next) => {
   try {
@@ -22,7 +23,7 @@ export const registerController = async (req, res, next) => {
       data: {
         user
       }
-      
+
     });
 
   } catch (error) {
@@ -143,14 +144,14 @@ export const refreshTokenController = async (req, res, next) => {
 
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 15 * 1000
+      maxAge: 15 * 60 * 1000
     });
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: NODE_ENV === "production",
       sameSite: "strict",
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
@@ -173,7 +174,7 @@ export const logoutController = async (req, res, next) => {
     res.clearCookie("accessToken", 
       { 
         httpOnly: true, 
-        secure: process.env.NODE_ENV === "production", 
+        secure: NODE_ENV === "production", 
         sameSite: "strict" 
       }
     );
@@ -181,7 +182,7 @@ export const logoutController = async (req, res, next) => {
     res.clearCookie("refreshToken", 
       { 
         httpOnly: true, 
-        secure: process.env.NODE_ENV === "production", 
+        secure: NODE_ENV === "production", 
         sameSite: "strict" 
       }
     );
@@ -203,8 +204,21 @@ export const logoutAllController = async (req, res, next) => {
     await logoutAllService(req.user.userId);
 
     // Clear current cookies
-    res.clearCookie("accessToken", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict" });
-    res.clearCookie("refreshToken", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict" });
+    res.clearCookie(
+      "accessToken", 
+      { 
+        httpOnly: true, 
+        secure: NODE_ENV === "production", 
+        sameSite: "strict" 
+      });
+
+    res.clearCookie(
+      "refreshToken", 
+      { 
+        httpOnly: true, 
+        secure: NODE_ENV === "production", 
+        sameSite: "strict" 
+      });
 
 
     res.status(200).json({
