@@ -9,7 +9,9 @@ export const registerController = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: "USER REGISTERED SUCCESSFULLY",
-      user,
+      data: {
+        user
+      }
     });
 
   } catch (error) {

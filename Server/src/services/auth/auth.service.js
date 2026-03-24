@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import userModel from "../../models/user/user.model.js";
 import { AppError } from "../../utils/AppError.js";
 import { hashPassword } from "../../utils/hash.js";
@@ -15,7 +14,6 @@ export const registerService = async ({ username, email, password }) => {
 
   // Hash password
   const hashedPassword = await hashPassword(password);
-
 
   // Create user
   const user = await userModel.create({
