@@ -1,5 +1,7 @@
 import crypto from "crypto";
 
+import jwt from "jsonwebtoken";
+
 import userModel from "../../models/user/user.model.js";
 
 import { AppError } from "../../utils/AppError.js";
@@ -12,7 +14,7 @@ import { sendEmail } from "../../utils/sendMail.js";
 
 import { generateEmailToken } from "../../utils/token.js";
 
-import { EMAIL_TOKEN_EXPIRY, FRONTEND_URL } from "../../config/env.js";
+import { EMAIL_TOKEN_EXPIRY, FRONTEND_URL, REFRESH_TOKEN_SECRET } from "../../config/env.js";
 
 export const registerService = async ({ username, email, password }) => {
   // Check user exists
@@ -60,7 +62,6 @@ export const loginService = async ({ email, password }) => {
 
   // Password match
   const isMatched = await comparePassword(password, user.password);
-  console.log("MATCH RESULT:", isMatched);
 
   if (!isMatched) {
     throw new AppError("INVALID_CREDENTIALS", 401);
@@ -137,8 +138,6 @@ export const verifyEmailService = async (token) => {
 const sendVerification = async (user, token) => {
   const verifyURL = `${FRONTEND_URL}/verify-email/${token}`;
 
-  console.log("verify URL ---->", verifyURL);
-
   await sendEmail(
     user.email,
     "Verify your email",
@@ -166,8 +165,6 @@ export const forgotPasswordService = async (email) => {
   user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
 
   await user.save({ validateBeforeSave: false });
-
-  console.log("Reset Token (for testing):", resetToken);
 
   const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
 
@@ -223,10 +220,6 @@ export const resetPasswordService = async (
   // Update password
   user.password = await hashPassword(password);
 
-  // Reset login attempts & lock
-  user.loginAttempts = 0;
-  user.lockUntil = undefined;
-
   //  Clear reset token
   user.resetPasswordToken = undefined;
   user.resetPasswordExpire = undefined;
@@ -243,9 +236,9 @@ export const resetPasswordService = async (
 };
 
 export const getProfileService = async (userId) => {
+
   const user = await userModel
-    .findById(userId)
-    .select("-password -refreshToken -__v");
+    .findById(userId);
 
   if (!user) {
     throw new AppError("USER_NOT_FOUND", 404);
@@ -255,7 +248,6 @@ export const getProfileService = async (userId) => {
 };
 
 export const refreshTokenService = async (incomingRefreshToken) => {
-  console.log("incoming refresh token:", incomingRefreshToken);
   if (!incomingRefreshToken) throw new AppError("REFRESH_TOKEN_REQUIRED", 401);
 
   // verify JWT
@@ -272,11 +264,6 @@ export const refreshTokenService = async (incomingRefreshToken) => {
     refreshToken: hashedToken,
   });
 
-  console.log(
-    "hashed token in DB:",
-    await userModel.findById(decoded.userId).select("+refreshToken"),
-  );
-
   if (!user) throw new AppError("TOKEN_REUSE_DETECTED", 403);
 
   if (decoded.tokenVersion !== user.tokenVersion) {
@@ -284,12 +271,12 @@ export const refreshTokenService = async (incomingRefreshToken) => {
   }
 
   // new tokens
-  const newAccessToken = generatedAccessToken({
+  const newAccessToken = generateAccessToken({
     userId: user._id,
     tokenVersion: user.tokenVersion,
   });
 
-  const newRefreshToken = generatedRefreshToken({
+  const newRefreshToken = generateRefreshToken({
     userId: user._id,
     tokenVersion: user.tokenVersion,
   });
@@ -308,7 +295,7 @@ export const refreshTokenService = async (incomingRefreshToken) => {
   };
 };
 
-export const logoutService = async (incomingRefreshToken, req, examId) => {
+export const logoutService = async (incomingRefreshToken ) => {
   if (!incomingRefreshToken) {
     throw new AppError("REFRESH_TOKEN_REQUIRED", 401);
   }
@@ -331,9 +318,6 @@ export const logoutService = async (incomingRefreshToken, req, examId) => {
     .update(incomingRefreshToken)
     .digest("hex");
 
-  console.log("DB token:", user.refreshToken);
-  console.log("Incoming hashed token:", hashedToken);
-
   if (user.refreshToken !== hashedToken) {
     throw new AppError("INVALID_REFRESH_TOKEN", 401);
   }
@@ -345,10 +329,9 @@ export const logoutService = async (incomingRefreshToken, req, examId) => {
 };
 
 export const logoutAllService = async (userId) => {
-  console.log("idfghjk", userId);
   // Find user
   const user = await userModel.findById(userId);
-  console.log(user);
+
   if (!user) throw new AppError("USER_NOT_FOUND", 404);
 
   // Increment tokenVersion → all previous tokens invalid
