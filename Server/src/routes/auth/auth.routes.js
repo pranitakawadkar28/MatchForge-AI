@@ -11,11 +11,13 @@ import {
 
 import { 
     forgotPasswordController,
+    getProfileController,
     loginController,
     registerController,
     resetPasswordController,
     verifyEmailController
  } from "../../controllers/auth/auth.controller.js";
+import { protect } from "../../middlewares/project.middleware.js";
 
 const authRouter = express.Router();
 
@@ -61,6 +63,15 @@ authRouter.post(
     "/reset-password/:token", 
     validate(resetPasswordSchema), 
     resetPasswordController
+);
+
+/**
+ * GET /api/auth/get-me
+ */
+authRouter.get(
+    "/get-me", 
+    protect, 
+    getProfileController
 );
 
 export default authRouter;

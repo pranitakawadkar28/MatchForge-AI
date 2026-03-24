@@ -2,6 +2,7 @@ import { NODE_ENV } from "../../config/env.js";
 
 import { 
   forgotPasswordService,
+  getProfileService,
   loginService,
   registerService, 
   resetPasswordService, 
@@ -106,6 +107,24 @@ export const resetPasswordController = async (req, res, next) => {
     await resetPasswordService(token, password, confirmPassword);
 
     res.status(200).json({ message: "PASSWORD RESET SUCCESSFULLY" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getProfileController = async (req, res, next) => {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) throw new AppError("Unauthorized access", 401);
+
+    const user = await getProfileService(userId);
+
+    res.status(200).json({
+      success: true,
+      message: "PROFILE FETCHED SUCCESSFULLY",
+      data: user,
+    });
   } catch (err) {
     next(err);
   }

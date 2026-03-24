@@ -247,3 +247,15 @@ export const resetPasswordService = async (
 
   return user;
 };
+
+export const getProfileService = async (userId) => {
+  const user = await userModel
+    .findById(userId)
+    .select("-password -refreshToken -__v");
+
+  if (!user) {
+    throw new AppError("USER_NOT_FOUND", 404);
+  }
+
+  return user;
+};
