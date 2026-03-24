@@ -3,11 +3,13 @@ import mongoose from "mongoose";
 const userSchema = new mongoose.Schema({
   username: {
     type: String,
+    required: true,
     unique: true,
   },
 
   email: {
     type: String,
+    required: true,
     unique: true,
   },
 
@@ -23,6 +25,7 @@ const userSchema = new mongoose.Schema({
 
   refreshToken: {
     type: String,
+    select: false,
   },
 
   isEmailVerified: {
@@ -30,25 +33,43 @@ const userSchema = new mongoose.Schema({
     default: false,
   },
 
-  emailVerificationToken: String,
+  emailVerificationToken: {
+    type: String,
+    select: false,
+  },
 
-  emailVerificationExpires: Date,
+  emailVerificationExpires: {
+    type: Date,
+    select: false,
+  },
 
-  resetPasswordToken: String,
+  resetPasswordToken: {
+    type: String,
+    select: false,
+  },
 
-  resetPasswordExpire: Date,
-});
-
-userSchema.set("toJSON", {
-  transform: function (doc, ret) {
-    delete ret.password;
-    delete ret.__v;
-    delete ret.refreshToken;
-    delete ret.emailVerificationToken;
-    delete ret.emailVerificationExpires;
-    return ret;
+  resetPasswordExpire: {
+    type: Date,
+    select: false,
   },
 });
+
+userSchema.set(
+  "toJSON",
+  {
+    transform: function (doc, ret) {
+      delete ret.password;
+      delete ret.__v;
+      delete ret.refreshToken;
+      delete ret.emailVerificationToken;
+      delete ret.emailVerificationExpires;
+      delete ret.resetPasswordToken;
+      delete ret.resetPasswordExpire;
+      return ret;
+    },
+  },
+  { timestamps: true },
+);
 
 const userModel = mongoose.model("users", userSchema);
 

@@ -27,6 +27,7 @@ export const protect = async (req, res, next) => {
     //  THIS IS THE KEY LINE
     req.user = {
       userId: decoded.userId,
+      tokenVersion: decoded.tokenVersion,
     };
 
     next();
