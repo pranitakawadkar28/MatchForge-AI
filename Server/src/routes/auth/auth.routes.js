@@ -13,6 +13,9 @@ import {
     forgotPasswordController,
     getProfileController,
     loginController,
+    logoutAllController,
+    logoutController,
+    refreshTokenController,
     registerController,
     resetPasswordController,
     verifyEmailController
@@ -74,4 +77,27 @@ authRouter.get(
     getProfileController
 );
 
+/**
+ * POST /api/auth/refresh
+ */
+authRouter.post(
+    "/refresh", 
+    refreshTokenController
+);
+
+/**
+ * GET /api/auth/logout
+ */
+authRouter.get(
+    "/logout", 
+    logoutController
+);
+
+/**
+ * GET /api/auth/logout-all
+ */
+authRouter.get(
+    "/logout-all",
+    logoutAllController
+)
 export default authRouter;

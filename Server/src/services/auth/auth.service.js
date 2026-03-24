@@ -4,15 +4,9 @@ import userModel from "../../models/user/user.model.js";
 
 import { AppError } from "../../utils/AppError.js";
 
-import { 
-  comparePassword, 
-  hashPassword 
-} from "../../utils/hash.js";
+import { comparePassword, hashPassword } from "../../utils/hash.js";
 
-import { 
-  generateAccessToken, 
-  generateRefreshToken 
-} from "../../utils/jwt.js";
+import { generateAccessToken, generateRefreshToken } from "../../utils/jwt.js";
 
 import { sendEmail } from "../../utils/sendMail.js";
 
@@ -148,7 +142,7 @@ const sendVerification = async (user, token) => {
   await sendEmail(
     user.email,
     "Verify your email",
-    `<a href="${verifyURL}">Verify Account</a>`
+    `<a href="${verifyURL}">Verify Account</a>`,
   );
 };
 
@@ -258,4 +252,112 @@ export const getProfileService = async (userId) => {
   }
 
   return user;
+};
+
+export const refreshTokenService = async (incomingRefreshToken) => {
+  console.log("incoming refresh token:", incomingRefreshToken);
+  if (!incomingRefreshToken) throw new AppError("REFRESH_TOKEN_REQUIRED", 401);
+
+  // verify JWT
+  const decoded = jwt.verify(incomingRefreshToken, REFRESH_TOKEN_SECRET);
+
+  // hash incoming token
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(incomingRefreshToken)
+    .digest("hex");
+
+  const user = await userModel.findOne({
+    _id: decoded.userId,
+    refreshToken: hashedToken,
+  });
+
+  console.log(
+    "hashed token in DB:",
+    await userModel.findById(decoded.userId).select("+refreshToken"),
+  );
+
+  if (!user) throw new AppError("TOKEN_REUSE_DETECTED", 403);
+
+  if (decoded.tokenVersion !== user.tokenVersion) {
+    throw new AppError("TOKEN_REVOKED", 401);
+  }
+
+  // new tokens
+  const newAccessToken = generatedAccessToken({
+    userId: user._id,
+    tokenVersion: user.tokenVersion,
+  });
+
+  const newRefreshToken = generatedRefreshToken({
+    userId: user._id,
+    tokenVersion: user.tokenVersion,
+  });
+
+  const newHashedToken = crypto
+    .createHash("sha256")
+    .update(newRefreshToken)
+    .digest("hex");
+
+  user.refreshToken = newHashedToken;
+  await user.save();
+
+  return {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+  };
+};
+
+export const logoutService = async (incomingRefreshToken, req, examId) => {
+  if (!incomingRefreshToken) {
+    throw new AppError("REFRESH_TOKEN_REQUIRED", 401);
+  }
+
+  const decoded = jwt.verify(incomingRefreshToken, REFRESH_TOKEN_SECRET);
+
+  const user = await userModel.findById(decoded.userId).select("+refreshToken");
+
+  if (!user) {
+    throw new AppError("USER_NOT_FOUND", 404);
+  }
+  if (!user.refreshToken) {
+    // Token already removed, treat as already logged out
+    return true;
+  }
+
+  // hash incoming token to compare with DB
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(incomingRefreshToken)
+    .digest("hex");
+
+  console.log("DB token:", user.refreshToken);
+  console.log("Incoming hashed token:", hashedToken);
+
+  if (user.refreshToken !== hashedToken) {
+    throw new AppError("INVALID_REFRESH_TOKEN", 401);
+  }
+
+  user.refreshToken = null;
+  await user.save();
+
+  return true;
+};
+
+export const logoutAllService = async (userId) => {
+  console.log("idfghjk", userId);
+  // Find user
+  const user = await userModel.findById(userId);
+  console.log(user);
+  if (!user) throw new AppError("USER_NOT_FOUND", 404);
+
+  // Increment tokenVersion → all previous tokens invalid
+  user.tokenVersion += 1;
+
+  // Remove stored refresh token (optional)
+  user.refreshToken = undefined;
+
+  await user.save();
+
+  return true;
 };

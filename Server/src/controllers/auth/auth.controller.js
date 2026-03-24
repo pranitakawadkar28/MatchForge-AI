@@ -4,6 +4,9 @@ import {
   forgotPasswordService,
   getProfileService,
   loginService,
+  logoutAllService,
+  logoutService,
+  refreshTokenService,
   registerService, 
   resetPasswordService, 
   verifyEmailService
@@ -124,6 +127,88 @@ export const getProfileController = async (req, res, next) => {
       success: true,
       message: "PROFILE FETCHED SUCCESSFULLY",
       data: user,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const refreshTokenController = async (req, res, next) => {
+  try {
+    const incomingRefreshToken = req.cookies.refreshToken;
+
+    const { accessToken, refreshToken } =
+      await refreshTokenService(incomingRefreshToken);
+
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 1000
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "TOKEN_REFRESHED",
+    });
+  } catch (err) {
+    console.log(err);
+    next(err);
+  }
+};
+
+export const logoutController = async (req, res, next) => {
+  try {
+    await logoutService(req.cookies.refreshToken);
+
+    // Clear cookies
+    res.clearCookie("accessToken", 
+      { 
+        httpOnly: true, 
+        secure: process.env.NODE_ENV === "production", 
+        sameSite: "strict" 
+      }
+    );
+
+    res.clearCookie("refreshToken", 
+      { 
+        httpOnly: true, 
+        secure: process.env.NODE_ENV === "production", 
+        sameSite: "strict" 
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const logoutAllController = async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    // req.user.id → token validation middleware
+    await logoutAllService(req.user.userId);
+
+    // Clear current cookies
+    res.clearCookie("accessToken", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict" });
+    res.clearCookie("refreshToken", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict" });
+
+
+    res.status(200).json({
+      success: true,
+      message: "Logged out from all devices successfully!",
     });
   } catch (err) {
     next(err);
