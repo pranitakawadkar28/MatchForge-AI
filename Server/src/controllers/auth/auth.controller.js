@@ -1,7 +1,9 @@
 import { NODE_ENV } from "../../config/env.js";
+
 import { 
   loginService,
-  registerService 
+  registerService, 
+  verifyEmailService
 } from "../../services/auth/auth.service.js";
 
 export const registerController = async (req, res, next) => {
@@ -41,11 +43,40 @@ export const loginController = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "USER_LOGIN_SUCCESSFULLY!!",
+      message: "USER_LOGGED_IN_SUCCESSFULLY",
       data: {
         user
       },
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const verifyEmailController = async (req, res, next) => {
+  try {
+    const { user, accessToken, refreshToken } = await verifyEmailService(req.params.token);
+
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "EMAIL_VERIFIED_SUCCESSFULLY",
+      data: { user },
+    });
+
   } catch (err) {
     next(err);
   }

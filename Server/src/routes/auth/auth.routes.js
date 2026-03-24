@@ -9,7 +9,8 @@ import {
 
 import { 
     loginController,
-    registerController
+    registerController,
+    verifyEmailController
  } from "../../controllers/auth/auth.controller.js";
 
 const authRouter = express.Router();
@@ -30,6 +31,14 @@ authRouter.post(
     "/login", 
     validate(loginSchema), 
     loginController
+);
+
+/**
+ * GET /api/auth/verify-email
+ */
+authRouter.get(
+    "/verify-email/:token", 
+    verifyEmailController
 );
 
 export default authRouter;
