@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { AppError } from "../utils/AppError.js";
 
 export const errorHandler = (err, req, res, next) => {
 
@@ -10,6 +11,14 @@ export const errorHandler = (err, req, res, next) => {
       errors: err.flatten().fieldErrors,
     });
   }	
+
+  // AppError — operational errors (auth, not found, etc.)
+  if (err instanceof AppError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+    });
+  }
 
   // Unknown errors
   console.log(err);
