@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { AppError } from "../utils/AppError.js";
 import { ACCESS_TOKEN_SECRET } from "../config/env.js";
 import userModel from "../models/user/user.model.js";
+import { isTokenBlacklisted } from "../utils/tokenBlacklist.js";
 
 export const protect = async (req, res, next) => {
   try {
@@ -14,8 +15,16 @@ export const protect = async (req, res, next) => {
 
     if (!token) throw new AppError("UNAUTHORIZED", 401);
 
+    //  Check blacklist FIRST (cheapest Redis check, no DB hit)
+    const blacklisted = await isTokenBlacklisted(token);
+    if (blacklisted) {
+      return res.status(401).json({ message: "Token has been invalidated" });
+    }
+
+    // Then verify signature
     const decoded = jwt.verify(token, ACCESS_TOKEN_SECRET);
 
+    // Then hit the DB
     const user = await userModel.findById(decoded.userId);
     if (!user) throw new AppError("USER_NOT_FOUND", 404);
 

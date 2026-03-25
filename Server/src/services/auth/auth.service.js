@@ -16,6 +16,8 @@ import { generateEmailToken } from "../../utils/token.js";
 
 import { EMAIL_TOKEN_EXPIRY, FRONTEND_URL, REFRESH_TOKEN_SECRET } from "../../config/env.js";
 
+import { blacklistToken, isTokenBlacklisted } from "../../utils/tokenBlacklist.js";
+
 export const registerService = async ({ username, email, password }) => {
   // Check user exists
   const existingUser = await userModel.findOne({
@@ -97,21 +99,42 @@ export const loginService = async ({ email, password }) => {
 };
 
 export const verifyEmailService = async (token) => {
-  const hashToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  const hashToken = crypto
+  .createHash("sha256")
+  .update(token)
+  .digest("hex");
 
   const user = await userModel.findOne({
     emailVerificationToken: hashToken,
     emailVerificationExpires: { $gt: Date.now() },
-  });
+  }).select("+refreshToken");
 
   if (!user) throw new AppError("TOKEN_INVALID_OR_EXPIRED", 400);
 
-  // mark verified
+  // Check if already verified
+    if (user.isEmailVerified) throw new AppError("EMAIL_ALREADY_VERIFIED", 400);
+
+    //  Blacklist old access token if user was already logged in
+  if (oldAccessToken) {
+    const accessDecoded = jwt.decode(oldAccessToken);
+    const accessTtl = accessDecoded?.exp - Math.floor(Date.now() / 1000);
+    if (accessTtl > 0) await blacklistToken(oldAccessToken, accessTtl);
+  }
+
+  //  Blacklist old refresh token if present
+  if (oldRefreshToken) {
+    const refreshDecoded = jwt.decode(oldRefreshToken);
+    const refreshTtl = refreshDecoded?.exp - Math.floor(Date.now() / 1000);
+    if (refreshTtl > 0) await blacklistToken(oldRefreshToken, refreshTtl);
+  }
+
+  // Mark verified
   user.isEmailVerified = true;
   user.emailVerificationToken = undefined;
   user.emailVerificationExpires = undefined;
 
-  // generate tokens (same as login)
+ // Generate new tokens
   const accessToken = generateAccessToken({
     userId: user._id,
     tokenVersion: user.tokenVersion,
@@ -122,7 +145,7 @@ export const verifyEmailService = async (token) => {
     tokenVersion: user.tokenVersion,
   });
 
-  // hash refresh token
+  // Hash and save new refresh token
   const hashedToken = crypto
     .createHash("sha256")
     .update(refreshToken)
@@ -132,7 +155,16 @@ export const verifyEmailService = async (token) => {
 
   await user.save();
 
-  return { user, accessToken, refreshToken };
+  // Sanitize user before returning
+  const sanitizedUser = {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    isEmailVerified: user.isEmailVerified,
+    createdAt: user.createdAt,
+  };
+
+  return { user: sanitizedUser, accessToken, refreshToken };
 };
 
 const sendVerification = async (user, token) => {
@@ -204,30 +236,49 @@ export const resetPasswordService = async (
   token,
   password,
   confirmPassword,
+  accessToken,
+  refreshToken
 ) => {
   if (password !== confirmPassword)
     throw new AppError("Passwords do not match", 400);
 
-  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+  const hashedToken = crypto
+  .createHash("sha256")
+  .update(token)
+  .digest("hex");
 
   const user = await userModel.findOne({
     resetPasswordToken: hashedToken,
     resetPasswordExpire: { $gt: Date.now() },
-  });
+  }).select("+refreshToken");
 
   if (!user) throw new AppError("Token invalid or expired", 400);
+
+  // Blacklist current access token if user was logged in during reset
+  if (accessToken) {
+    const accessDecoded = jwt.decode(accessToken);
+    const accessTtl = accessDecoded?.exp - Math.floor(Date.now() / 1000);
+    if (accessTtl > 0) await blacklistToken(accessToken, accessTtl);
+  }
+
+  // Blacklist current refresh token if present
+  if (refreshToken) {
+    const refreshDecoded = jwt.decode(refreshToken);
+    const refreshTtl = refreshDecoded?.exp - Math.floor(Date.now() / 1000);
+    if (refreshTtl > 0) await blacklistToken(refreshToken, refreshTtl);
+  }
 
   // Update password
   user.password = await hashPassword(password);
 
-  //  Clear reset token
+  //  Clear reset token fields
   user.resetPasswordToken = undefined;
   user.resetPasswordExpire = undefined;
 
-  // Increment tokenVersion → old tokens immediately invalid
+  // Increment tokenVersion → kills ALL other active sessions on next request
   user.tokenVersion += 1;
 
-  // Optional: remove refreshToken to prevent reuse
+  // Remove refreshToken from DB → no refresh possible
   user.refreshToken = undefined;
 
   await user.save();
@@ -247,13 +298,18 @@ export const getProfileService = async (userId) => {
   return user;
 };
 
-export const refreshTokenService = async (incomingRefreshToken) => {
+export const refreshTokenService = async (incomingRefreshToken, oldAccessToken) => {
+  
   if (!incomingRefreshToken) throw new AppError("REFRESH_TOKEN_REQUIRED", 401);
 
-  // verify JWT
+  //  Check blacklist FIRST before any DB/CPU work
+  const isBlacklisted = await isTokenBlacklisted(incomingRefreshToken);
+  if (isBlacklisted) throw new AppError("TOKEN_REVOKED", 401);
+
+  // verify JWT signature
   const decoded = jwt.verify(incomingRefreshToken, REFRESH_TOKEN_SECRET);
 
-  // hash incoming token
+  // hash incoming token to compare with DB
   const hashedToken = crypto
     .createHash("sha256")
     .update(incomingRefreshToken)
@@ -270,7 +326,18 @@ export const refreshTokenService = async (incomingRefreshToken) => {
     throw new AppError("TOKEN_REVOKED", 401);
   }
 
-  // new tokens
+  // Blacklist old refresh token immediately (token rotation)
+  const refreshTtl = decoded.exp - Math.floor(Date.now() / 1000);
+  if (refreshTtl > 0) await blacklistToken(incomingRefreshToken, refreshTtl);
+
+  // Blacklist old access token immediately
+  if (oldAccessToken) {
+    const accessDecoded = jwt.decode(oldAccessToken);
+    const accessTtl = accessDecoded?.exp - Math.floor(Date.now() / 1000);
+    if (accessTtl > 0) await blacklistToken(oldAccessToken, accessTtl);
+  }
+
+  // Generate new tokens
   const newAccessToken = generateAccessToken({
     userId: user._id,
     tokenVersion: user.tokenVersion,
@@ -295,7 +362,7 @@ export const refreshTokenService = async (incomingRefreshToken) => {
   };
 };
 
-export const logoutService = async (incomingRefreshToken ) => {
+export const logoutService = async (incomingRefreshToken, accessToken) => {
   if (!incomingRefreshToken) {
     throw new AppError("REFRESH_TOKEN_REQUIRED", 401);
   }
@@ -307,12 +374,18 @@ export const logoutService = async (incomingRefreshToken ) => {
   if (!user) {
     throw new AppError("USER_NOT_FOUND", 404);
   }
+
   if (!user.refreshToken) {
-    // Token already removed, treat as already logged out
+    // Already logged out — but still blacklist the access token if present
+    if (accessToken) {
+      const accessDecoded = jwt.decode(accessToken);
+      const ttl = accessDecoded?.exp - Math.floor(Date.now() / 1000);
+      if (ttl > 0) await blacklistToken(accessToken, ttl); 
+    }
     return true;
   }
 
-  // hash incoming token to compare with DB
+  // Hash incoming token to compare with DB
   const hashedToken = crypto
     .createHash("sha256")
     .update(incomingRefreshToken)
@@ -322,22 +395,48 @@ export const logoutService = async (incomingRefreshToken ) => {
     throw new AppError("INVALID_REFRESH_TOKEN", 401);
   }
 
+  // Blacklist refresh token in Redis
+  const refreshTtl = decoded.exp - Math.floor(Date.now() / 1000);
+  if (refreshTtl > 0) await blacklistToken(incomingRefreshToken, refreshTtl);
+
+  // Blacklist access token in Redis
+  if (accessToken) {
+    const accessDecoded = jwt.decode(accessToken);
+    const accessTtl = accessDecoded?.exp - Math.floor(Date.now() / 1000);
+    if (accessTtl > 0) await blacklistToken(accessToken, accessTtl);
+  }
+
   user.refreshToken = null;
   await user.save();
 
   return true;
 };
 
-export const logoutAllService = async (userId) => {
+export const logoutAllService = async (userId, accessToken, refreshToken) => {
+
   // Find user
   const user = await userModel.findById(userId);
 
   if (!user) throw new AppError("USER_NOT_FOUND", 404);
 
-  // Increment tokenVersion → all previous tokens invalid
+  // Blacklist current access token immediately
+  if (accessToken) {
+    const accessDecoded = jwt.decode(accessToken);
+    const accessTtl = accessDecoded?.exp - Math.floor(Date.now() / 1000);
+    if (accessTtl > 0) await blacklistToken(accessToken, accessTtl);
+  }
+
+  // Blacklist current refresh token immediately
+  if (refreshToken) {
+    const refreshDecoded = jwt.decode(refreshToken);
+    const refreshTtl = refreshDecoded?.exp - Math.floor(Date.now() / 1000);
+    if (refreshTtl > 0) await blacklistToken(refreshToken, refreshTtl);
+  }
+
+  // Increment tokenVersion → kills ALL other active tokens on next request
   user.tokenVersion += 1;
 
-  // Remove stored refresh token (optional)
+  // Remove refresh token from DB
   user.refreshToken = undefined;
 
   await user.save();
