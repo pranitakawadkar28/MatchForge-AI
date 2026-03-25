@@ -98,7 +98,7 @@ export const loginService = async ({ email, password }) => {
   };
 };
 
-export const verifyEmailService = async (token) => {
+export const verifyEmailService = async (token, oldAccessToken, oldRefreshToken) => {
 
   const hashToken = crypto
   .createHash("sha256")
