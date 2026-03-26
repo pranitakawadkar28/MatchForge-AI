@@ -6,7 +6,7 @@ import redisClient from "./src/config/redis.js";
 async function startServer() {
     try {
         await connectToDB();
-        await redisClient.connect();
+        // await redisClient.connect();
 
         app.listen(PORT, () => {
             console.log(`SERVER IS RUNNING ON PORT ${PORT}`);

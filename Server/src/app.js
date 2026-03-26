@@ -4,15 +4,15 @@ import cors from "cors";
 
 import authRouter from "./routes/auth/auth.routes.js"
 import { errorHandler } from "./middlewares/error.middleware.js";
+import { FRONTEND_URL } from "./config/env.js";
 
 const app = express();
 
-const corsOptions = {
-  origin: ["http://localhost:3000"], 
-  credentials: true, 
-};
+app.use(cors({
+  origin: FRONTEND_URL,   
+  credentials: true
+}));
 
-app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
